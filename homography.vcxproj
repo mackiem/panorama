@@ -81,12 +81,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="corners.cpp" />
-    <ClCompile Include="features.cpp" />
+    <ClCompile Include="panorama.cpp" />
     <ClCompile Include="utils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="corners.h" />
-    <ClInclude Include="features.h" />
+    <ClInclude Include="panorama.h" />
     <ClInclude Include="utils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

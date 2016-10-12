@@ -18,10 +18,10 @@
     <ClCompile Include="utils.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="features.cpp">
+    <ClCompile Include="corners.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="corners.cpp">
+    <ClCompile Include="panorama.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -29,10 +29,10 @@
     <ClInclude Include="utils.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="features.h">
+    <ClInclude Include="corners.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="corners.h">
+    <ClInclude Include="panorama.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
