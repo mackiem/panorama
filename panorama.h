@@ -1,6 +1,12 @@
 #include "opencv2/core/core.hpp"
 #include "opencv2/features2d/features2d.hpp"
 
+struct MatchingFeaturePt {
+	double score;
+	int index_1;
+	int index_2;
+};
+
 class EuclideanDistance {
 public:
 	static void match_by_euclidean_distance(const std::vector<cv::KeyPoint>& keypoints_1, const cv::Mat& descriptor_1, 
@@ -17,7 +23,11 @@ class Ransac {
 public:
 	static void ransac_for_homography(const double epsilon_percentage_of_outliers, const int total_correspondences,
 		const std::vector<cv::KeyPoint>& key_points_1, const std::vector<cv::KeyPoint>& key_points_2,
-	const std::vector<cv::DMatch >& matches, cv::Mat& final_H, std::vector<cv::Vec3d>& final_img1_pts_vec3d, std::vector<cv::Vec3d>& final_img2_pts_vec3d);
+	const std::vector<cv::DMatch >& matches, cv::Mat& final_H, std::vector<cv::Vec3d>& final_img1_pts_vec3d, std::vector<cv::Vec3d>& final_img2_pts_vec3d,
+	std::vector<cv::KeyPoint>& max_inliner_keypoins_1,
+	std::vector<cv::KeyPoint>& max_inliner_keypoins_2,
+	std::vector<cv::DMatch>& max_inliner_matches
+		);
 	
 };
 
@@ -59,6 +69,8 @@ public:
 	static void find_bounding_box(const std::vector<cv::Point2d>& points, double& min_x, double& max_x, double& min_y, double& max_y);
 	static void apply_distortion_correction(cv::Mat& homography_matrix, const cv::Mat& img, cv::Mat& world_img, const std::string& final_image_name);
 	static void combine_transformed_imgs(const cv::Mat& img_1, const cv::Mat& img_2, cv::Mat& H, cv::Mat& transformed_img);
+	static void get_bounding_box(const std::vector<cv::Mat>& imgs, const std::vector<cv::Mat>& Hs, double& minx, double& maxx, double& miny, double& maxy);
+	static void combine_imgs_to_middle_img(const std::vector<cv::Mat>& imgs, const std::vector<cv::Mat>& Hs, cv::Mat& transformed_img);
 };
 
 

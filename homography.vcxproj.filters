@@ -15,23 +15,11 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="utils.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="corners.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="panorama.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="utils.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="corners.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="panorama.h">
       <Filter>Header Files</Filter>
     </ClInclude>

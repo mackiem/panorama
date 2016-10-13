@@ -5,11 +5,12 @@
 #include "opencv2/features2d/features2d.hpp"
 #include "opencv2/nonfree/features2d.hpp"
 #include <iostream>
-#include "Corners.h"
 #include <chrono>
 #include <cmath>
 #include <random>
 #include <set>
+
+#define INLINER_DEBUG
 
 const int NO_OF_POINTS = 4;
 
@@ -36,7 +37,7 @@ std::string sub_dir;
 void EuclideanDistance::match_by_euclidean_distance(const std::vector<cv::KeyPoint>& keypoints_1, const cv::Mat& descriptor_1, 
 	const std::vector<cv::KeyPoint>& keypoints_2, const cv::Mat& descriptor_2, double threshold, std::vector<cv::DMatch>& matches) {
 
-	std::vector<MatchingSurfPt> matching_pts;
+	std::vector<MatchingFeaturePt> matching_pts;
 	double max_ssd = -DBL_MAX;
 	double min_ssd = DBL_MAX;
 
@@ -63,7 +64,7 @@ void EuclideanDistance::match_by_euclidean_distance(const std::vector<cv::KeyPoi
 			max_ssd = std::max(max_ssd, ssd);
 			min_ssd = std::min(min_ssd, ssd);
 
-			MatchingSurfPt matching_pt;
+			MatchingFeaturePt matching_pt;
 			matching_pt.score = ssd;
 			matching_pt.index_1 = i1;
 			matching_pt.index_2 = i2;
@@ -74,7 +75,7 @@ void EuclideanDistance::match_by_euclidean_distance(const std::vector<cv::KeyPoi
 
 
 	// sort values according to SSD for each point
-	std::sort(matching_pts.begin(), matching_pts.end(), [&] (const MatchingSurfPt& lhs, const MatchingSurfPt& rhs)
+	std::sort(matching_pts.begin(), matching_pts.end(), [&] (const MatchingFeaturePt& lhs, const MatchingFeaturePt& rhs)
 	{
 		if (lhs.index_1 == rhs.index_1) {
 			return lhs.score < rhs.score;
@@ -82,7 +83,7 @@ void EuclideanDistance::match_by_euclidean_distance(const std::vector<cv::KeyPoi
 		return lhs.index_1 < rhs.index_1;
 	});
 
-	std::vector<MatchingSurfPt> filtered_matching_pts;
+	std::vector<MatchingFeaturePt> filtered_matching_pts;
 
 	int prev_index = -1;
 
@@ -110,13 +111,13 @@ void LinearLeastSquares::linear_least_squares_for_homography(const cv::Mat& A, c
 	cv::Mat U, D, Vt;
 	cv::SVD::compute(A, D, U, Vt, cv::SVD::FULL_UV);
 
-	std::cout << Vt << "\n";
+	//std::cout << Vt << "\n";
 
 	cv::Mat last_col_V = Vt.t().col(Vt.cols - 1);
 
 	H = last_col_V;
 
-	std::cout << H << "\n";
+	//std::cout << H << "\n";
 
 }
 
@@ -127,11 +128,15 @@ double round(double number)
 
 void Ransac::ransac_for_homography(const double epsilon_percentage_of_outliers, const int n_total_correspondences,
 	const std::vector<cv::KeyPoint>& key_points_1, const std::vector<cv::KeyPoint>& key_points_2,
-	const std::vector<cv::DMatch >& matches, cv::Mat& final_H, std::vector<cv::Vec3d>& final_img1_pts_vec3d, std::vector<cv::Vec3d>& final_img2_pts_vec3d) {
+	const std::vector<cv::DMatch >& matches, cv::Mat& final_H, std::vector<cv::Vec3d>& final_img1_pts_vec3d, std::vector<cv::Vec3d>& final_img2_pts_vec3d,
+	std::vector<cv::KeyPoint>& max_inliner_keypoins_1,
+	std::vector<cv::KeyPoint>& max_inliner_keypoins_2,
+	std::vector<cv::DMatch>& max_inliner_matches
+		) {
 
-	const double sigma = 5;
+	//const double sigma = 5;
 	// threshold for deciding whether an inlier
-	const double delta = 3 * sigma;
+	const double delta = 3;
 
 
 	// N = no of trials
@@ -154,6 +159,8 @@ void Ransac::ransac_for_homography(const double epsilon_percentage_of_outliers, 
 	int max_inliers = 0;
 	std::vector<cv::Vec3d> max_img1_pts_vec3d;
 	std::vector<cv::Vec3d> max_img2_pts_vec3d;
+
+
 
 	for (int i = 0; i < N; ++i) {
 		// randomly select n points
@@ -182,22 +189,35 @@ void Ransac::ransac_for_homography(const double epsilon_percentage_of_outliers, 
 		cv::Mat H = homography.get_homography();
 
 		// calculate outliers and inliners
+		std::vector<cv::KeyPoint> tmp_max_inliner_keypoins_1;
+		std::vector<cv::KeyPoint> tmp_max_inliner_keypoins_2;
+		std::vector<cv::DMatch> tmp_max_inliner_matches;
+
 		for (j = 0; j < matches.size(); ++j) {
+
+			cv::KeyPoint img_pt1 = key_points_1[matches[j].queryIdx];
+			cv::KeyPoint img_pt2 = key_points_2[matches[j].trainIdx];
+
+			tmp_max_inliner_keypoins_1.push_back(img_pt1);
+			tmp_max_inliner_keypoins_2.push_back(img_pt2);
+
 			// make sure it's not a randomly selected point
 			if (selected_matches_index.find(j) != selected_matches_index.end()) {
+				cv::DMatch match;
+				match.queryIdx = tmp_max_inliner_keypoins_1.size() - 1;
+				match.trainIdx = tmp_max_inliner_keypoins_2.size() - 1;
+				tmp_max_inliner_matches.push_back(match);
 				continue;
 			}
-			cv::KeyPoint img_pt1 = key_points_1[matches[i].queryIdx];
-			cv::KeyPoint img_pt2 = key_points_2[matches[i].trainIdx];
 
 			cv::Vec3d img_pt1_vec(img_pt1.pt.x, img_pt1.pt.y, 1.0);
 			cv::Vec3d img_pt2_vec(img_pt2.pt.x, img_pt2.pt.y, 1.0);
 
-			cv::Mat calculated_pt_mat = H * cv::Mat(img_pt2_vec);
+			cv::Mat calculated_pt_mat = H * cv::Mat(img_pt1_vec);
 			cv::Vec3d calculated_pt(calculated_pt_mat);
 
 			cv::Vec2d img_pt2_vec2d(img_pt2_vec[0], img_pt2_vec[1]);
-			if (calculated_pt[2] < 1e-6) {
+			if (std::abs(calculated_pt[2]) < 1e-6) {
 				continue;
 			}
 			cv::Vec2d calculated_pt_vec2d(calculated_pt[0] / calculated_pt[2], calculated_pt[1] / calculated_pt[2]);
@@ -205,7 +225,12 @@ void Ransac::ransac_for_homography(const double epsilon_percentage_of_outliers, 
 			if (distance < delta) {
 				inlier_img1_pts_vec3d.push_back(img_pt1_vec);
 				inlier_img2_pts_vec3d.push_back(img_pt2_vec);
+				cv::DMatch match;
+				match.queryIdx = tmp_max_inliner_keypoins_1.size() - 1;
+				match.trainIdx = tmp_max_inliner_keypoins_2.size() - 1;
+				tmp_max_inliner_matches.push_back(match);
 			}
+			
 		}
 
 		if (max_inliers < inlier_img1_pts_vec3d.size()) {
@@ -213,14 +238,23 @@ void Ransac::ransac_for_homography(const double epsilon_percentage_of_outliers, 
 			max_inliers = inlier_img1_pts_vec3d.size();
 			max_img1_pts_vec3d = inlier_img1_pts_vec3d;
 			max_img2_pts_vec3d = inlier_img2_pts_vec3d;
+
+			max_inliner_keypoins_1 = tmp_max_inliner_keypoins_1;
+			max_inliner_keypoins_2 = tmp_max_inliner_keypoins_2;
+			max_inliner_matches = tmp_max_inliner_matches;
+
 		}
 	}
-
 	// refine homography with max inlier set
 	Homography max_homography(max_img1_pts_vec3d, max_img2_pts_vec3d);
 	final_H = max_homography.get_homography();
 	final_img1_pts_vec3d = max_img1_pts_vec3d;
 	final_img2_pts_vec3d = max_img2_pts_vec3d;
+
+	if (max_img1_pts_vec3d.size() <= M) {
+		std::cout << "# of inliners not reached : needed = " << M << " actual = " << max_img1_pts_vec3d.size() << "\n";
+	}
+	std::cout << "# of inliners : " << max_img1_pts_vec3d.size() << " M: " << M << "\n";
 
 }
 
@@ -430,7 +464,7 @@ void DogLeg::dogleg_for_non_linear_least_squares_optimization(const cv::Mat& H, 
 	convert_to_P_k(H_k, P_k);
 
 	int some_iterations = 10000;
-	double error_threshold = 0.01;
+	double error_threshold = 1e-10;
 
 
 	std::vector<cv::Vec3d> calculated_pts(img1_pts.size());
@@ -457,7 +491,8 @@ void DogLeg::dogleg_for_non_linear_least_squares_optimization(const cv::Mat& H, 
 
 	cv::Mat last_increment;
 
-	for (int n = 0; n < some_iterations && calculated_error > error_threshold; ++n) {
+	int n = 0;
+	for (; n < some_iterations && calculated_error > error_threshold; ++n) {
 
 		convert_to_H_k(P_k, H_k);
 		calculate_result_pts(img1_pts, H_k, calculated_pts);
@@ -526,6 +561,8 @@ void DogLeg::dogleg_for_non_linear_least_squares_optimization(const cv::Mat& H, 
 	output_H = cv::Mat(3, 3, CV_64F);
 	convert_to_H_k(P_k, output_H);
 
+	std::cout << "# of iterations : " << n << " , error : " << calculated_error << "\n"; 
+
 
 }
 
@@ -568,21 +605,21 @@ void ImgUtils::combine_transformed_imgs(const cv::Mat& img_1, const cv::Mat& img
 	cv::Point2d offset(offset_x, offset_y);
 
 	// initially put img2 on to the final_img
-	for (int y = 0; y < img_2.rows; ++y) {
-		for (int x = 0; x < img_2.cols; ++x) {
-			//int transformed_x = x + width - img_2.cols;
-			//int transformed_y = y + height - img_2.rows;
-			cv::Point2d transformed_pt(x, y);
-			transformed_pt -= offset;
+	//for (int y = 0; y < img_2.rows; ++y) {
+	//	for (int x = 0; x < img_2.cols; ++x) {
+	//		//int transformed_x = x + width - img_2.cols;
+	//		//int transformed_y = y + height - img_2.rows;
+	//		cv::Point2d transformed_pt(x, y);
+	//		transformed_pt -= offset;
 
-			if (transformed_pt.y >= 0 && transformed_pt.y < transformed_img.rows
-				&& transformed_pt.x >= 0 && transformed_pt.x < transformed_img.cols) {
-					transformed_img.at<cv::Vec3b>(transformed_pt.y, transformed_pt.x) = img_2.at<cv::Vec3b>(y, x);
-			} else {
-				std::cout << transformed_pt.x << ", " << transformed_pt.y << "\n";
-			}
-		}
-	}
+	//		if (transformed_pt.y >= 0 && transformed_pt.y < transformed_img.rows
+	//			&& transformed_pt.x >= 0 && transformed_pt.x < transformed_img.cols) {
+	//				transformed_img.at<cv::Vec3b>(transformed_pt.y, transformed_pt.x) = img_2.at<cv::Vec3b>(y, x);
+	//		} else {
+	//			std::cout << transformed_pt.x << ", " << transformed_pt.y << "\n";
+	//		}
+	//	}
+	//}
 
 	//for (int y = 0; y < img_1.rows; ++y) {
 	//	for (int x = 0; x < img_1.cols; ++x) {
@@ -598,7 +635,7 @@ void ImgUtils::combine_transformed_imgs(const cv::Mat& img_1, const cv::Mat& img
 	//	}
 	//}
 
-	// inverse route
+	 //inverse route
 	cv::Mat inv_H = H.inv();
 
 	for (int y = 0; y < transformed_img.rows; ++y) {
@@ -609,12 +646,137 @@ void ImgUtils::combine_transformed_imgs(const cv::Mat& img_1, const cv::Mat& img
 			cv::Point2d corresponding_image_point = ImgUtils::apply_custom_homography(inv_H, offset_pt);
 
 			if (corresponding_image_point.y >= 0 && corresponding_image_point.y < img_1.rows
-				&& corresponding_image_point.x >= 0 && corresponding_image_point.x < img_2.cols) {
+				&& corresponding_image_point.x >= 0 && corresponding_image_point.x < img_1.cols) {
 					transformed_img.at<cv::Vec3b>(y, x) = img_1.at<cv::Vec3b>(corresponding_image_point.y, corresponding_image_point.x);
+			} else {
+				//cv::Point2d transformed_pt(x, y);
+				//transformed_pt += offset;
+				//if (transformed_pt.y >= 0 && transformed_pt.y < img_2.rows
+				//	&& transformed_pt.x >= 0 && transformed_pt.x < img_2.cols) {
+				//		transformed_img.at<cv::Vec3b>(y, x) = img_2.at<cv::Vec3b>(transformed_pt.y, transformed_pt.x);
+				//}
+				
 			}
 		}
 	}
-	//cv::imshow("combo img", transformed_img);
+}
+
+void ImgUtils::get_bounding_box(const std::vector<cv::Mat>& imgs, const std::vector<cv::Mat>& Hs,
+	double& minx, double& maxx, double& miny, double& maxy) {
+
+	std::vector<cv::Point2d> projected_pts;
+
+	for (int i = 0; i < imgs.size(); ++i) {
+		cv::Mat img = imgs[i];
+		std::vector<cv::Point2d> corner_pts;
+		corner_pts.push_back(cv::Point2d(0, 0));
+		corner_pts.push_back(cv::Point2d(img.cols, 0));
+		corner_pts.push_back(cv::Point2d(0, img.rows));
+		corner_pts.push_back(cv::Point2d(img.cols, img.rows));
+
+		for (auto& corner_pt : corner_pts) {
+			cv::Point2d projected_pt = ImgUtils::apply_custom_homography(Hs[i], corner_pt);
+			projected_pts.push_back(projected_pt);
+		}
+	}
+
+	ImgUtils::find_bounding_box(projected_pts, minx, maxx, miny, maxy);
+	
+}
+
+void ImgUtils::combine_imgs_to_middle_img(const std::vector<cv::Mat>& imgs, const std::vector<cv::Mat>& Hs, cv::Mat& transformed_img) {
+	int middle_index = imgs.size() / 2;
+
+	//std::vector<cv::Mat> final_homographies(Hs.size() + 1);
+	//for (int i = 0; i < imgs.size(); ++i) {
+	//	int multiplications = std::abs(middle_index - i);
+	//	cv::Mat final_H = cv::Mat(3, 3, CV_64F);
+	//	cv::setIdentity(final_H);
+
+	//	if ((middle_index - i) > 0) {
+	//		for (int j = 0; j < multiplications; ++j) {
+	//			final_H = final_H * Hs[j];
+	//		}
+	//	} else if ((middle_index - i) < 0) {
+	//		for (int j = i; j < multiplications; ++j) {
+	//			final_H = final_H * Hs[Hs.size() - 1 - j].inv();
+	//		}
+	//	}
+	//	final_homographies[i] = final_H;
+	//	// middle index == 0
+	//}
+
+	// for 5
+	std::vector<cv::Mat> final_homographies(5);
+	cv::Mat identity = cv::Mat(3, 3, CV_64F);
+	cv::setIdentity(identity);
+	// H_1_3
+	final_homographies[0] = Hs[0] * Hs[1];
+	// H_2_3
+	final_homographies[1] = Hs[1];
+	// H_3_3
+	final_homographies[middle_index] = identity;
+	// H_4_3 = H_3_4.inv()
+	final_homographies[3] = Hs[2].inv();
+	// H_5_3 = H_4_5.inv() * H_3_4.inv()
+	final_homographies[4] = Hs[3].inv() * Hs[2].inv();
+
+
+
+	double minx, maxx, miny, maxy;
+	ImgUtils::get_bounding_box(imgs, final_homographies, minx, maxx, miny, maxy);
+	
+	const int width = std::ceil(maxx - minx);
+	float width_ratio = width / (float)(maxx-minx);
+	float aspect_ratio = (float)(maxx-minx) / (float)(maxy-miny);
+
+	//int height = width / aspect_ratio;
+	int height = std::ceil(maxy - miny);
+
+	int offset_x = minx;
+	int offset_y = miny;
+
+	cv::Point2d offset(offset_x, offset_y);
+
+	transformed_img = cv::Mat(height, width, CV_8UC3);
+
+
+
+	//inverse route
+	for (int i = 0; i < imgs.size(); ++i) {
+
+		cv::Mat inv_H = final_homographies[i].inv();
+
+		cv::Mat img_1 = imgs[i];
+
+		//const int no_of_rows = height;
+
+#pragma loop(hint_parallel(8))
+		for (int y = 0, no_of_rows = height; y < no_of_rows; ++y) {
+			for (int x = 0; x < transformed_img.cols; ++x) {
+
+				cv::Point2d img_pt(x, y);
+				cv::Point2d offset_pt = img_pt + offset;
+				cv::Point2d corresponding_image_point = ImgUtils::apply_custom_homography(inv_H, offset_pt);
+
+				if (corresponding_image_point.y >= 0 && corresponding_image_point.y < img_1.rows
+					&& corresponding_image_point.x >= 0 && corresponding_image_point.x < img_1.cols) {
+						transformed_img.at<cv::Vec3b>(y, x) = img_1.at<cv::Vec3b>(corresponding_image_point.y, corresponding_image_point.x);
+				} else {
+					//cv::Point2d transformed_pt(x, y);
+					//transformed_pt += offset;
+					//if (transformed_pt.y >= 0 && transformed_pt.y < img_2.rows
+					//	&& transformed_pt.x >= 0 && transformed_pt.x < img_2.cols) {
+					//		transformed_img.at<cv::Vec3b>(y, x) = img_2.at<cv::Vec3b>(transformed_pt.y, transformed_pt.x);
+					//}
+
+				}
+			}
+		}
+	}
+
+
+
 }
 
 void ImgUtils::apply_distortion_correction(cv::Mat& homography_matrix, const cv::Mat& img, cv::Mat& transformed_img, const std::string& final_image_name) {
@@ -650,26 +812,26 @@ void ImgUtils::find_bounding_box(const std::vector<cv::Point2d>& points, double&
 
 int main(int argc, char** argv)  {
 
-#ifdef DEBUG
-	std::string dir = "dset1/";
+#ifdef _DEBUG
+	std::string dir = "dset2/";
 #else
-	std::string dir = "dset1/";
+	std::string dir = "dset2/";
 #endif
 
-	const int no_of_images = 4;
+	const int no_of_images = 5;
 
 	std::vector<cv::Mat> imgs;
 	for (int i = 0; i < no_of_images; ++i) {
 		std::stringstream ss;
 		ss << dir;
-		ss << (i+1) << ".jpg";
+		ss << (i+2) << ".jpg";
 		cv::Mat img = cv::imread(ss.str());
 		imgs.push_back(img);
 	}
 
 	// SIFT extract features
 	std::vector<std::vector<cv::KeyPoint>> key_points_in_imgs;
-	cv::SiftFeatureDetector sift_feature_detector(100);
+	cv::SiftFeatureDetector sift_feature_detector(300);
 	sift_feature_detector.detect(imgs, key_points_in_imgs);
 
 	std::vector<cv::Mat> descriptors(no_of_images);
@@ -680,26 +842,45 @@ int main(int argc, char** argv)  {
 	}
 
 	// consider img 1 and 2
-	double threshold = 2;
+	double threshold = 10;
 	std::vector<std::vector<cv::DMatch>> matches_in_imgs(no_of_images - 1);
 	
 	double epsilon_percentage_of_outliers = 0.1;
 	cv::Mat output_img = imgs[0];
+	std::vector<cv::Mat> opt_homographies(no_of_images - 1);
 	for (int i = 0; i < no_of_images - 1; ++i) {
 		EuclideanDistance::match_by_euclidean_distance(key_points_in_imgs[i], descriptors[i], key_points_in_imgs[i+1], descriptors[i+1], threshold, matches_in_imgs[i]);
 		cv::Mat match_img;
 		cv::drawMatches(imgs[i], key_points_in_imgs[i], imgs[i+1], key_points_in_imgs[i+1], matches_in_imgs[i], match_img);
-		//cv::imshow("match", match_img);
+		cv::imshow("match", match_img);
+		cv::imwrite("correspondence_" + std::to_string(i+1) + ".jpg", match_img);
 		std::vector<cv::Vec3d> img_1_inliers;
 		std::vector<cv::Vec3d> img_2_inliers;
 		cv::Mat H;
-		Ransac::ransac_for_homography(epsilon_percentage_of_outliers, matches_in_imgs[i].size(), key_points_in_imgs[i], key_points_in_imgs[i+1],  matches_in_imgs[i], H, img_1_inliers, img_2_inliers);
+		std::vector<cv::KeyPoint> max_inliner_keypoins_1;
+		std::vector<cv::KeyPoint> max_inliner_keypoins_2;
+		std::vector<cv::DMatch> max_inliner_matches;
+		Ransac::ransac_for_homography(epsilon_percentage_of_outliers, matches_in_imgs[i].size(), key_points_in_imgs[i], 
+			key_points_in_imgs[i+1],  matches_in_imgs[i], H, img_1_inliers, img_2_inliers,
+				max_inliner_keypoins_1, max_inliner_keypoins_2, max_inliner_matches);
+
+		cv::Mat inliner_img;
+		cv::drawMatches(imgs[i], max_inliner_keypoins_1, imgs[i+1], max_inliner_keypoins_2, max_inliner_matches, inliner_img, 
+			cv::Scalar(255.0, 0., 0.), cv::Scalar(0.0, 0., 255.));
+		cv::imshow("inliers", inliner_img);
+		cv::imwrite("inliers_" + std::to_string(i+1) + ".jpg", inliner_img);
+
+		opt_homographies[i] = H;
 		cv::Mat opt_H;
 		DogLeg::dogleg_for_non_linear_least_squares_optimization(H, img_1_inliers, img_2_inliers, opt_H);
-		cv::Mat transformed_img;
-		ImgUtils::combine_transformed_imgs(output_img, imgs[i + 1], H, transformed_img);
-		output_img = transformed_img;
+		//opt_homographies[i] = opt_H;
 	}
+
+
+	cv::Mat transformed_img;
+	ImgUtils::combine_imgs_to_middle_img(imgs, opt_homographies, transformed_img);
+
+	output_img = transformed_img;
 	cv::imshow("final_img", output_img);
 	cv::imwrite("final_img.jpg", output_img);
 
