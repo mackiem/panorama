@@ -9,29 +9,8 @@
 #include <cmath>
 #include <random>
 #include <set>
+#include "hfit.h"
 
-#define INLINER_DEBUG
-
-const int NO_OF_POINTS = 4;
-
-cv::Mat pair_1_img_1;
-cv::Mat pair_1_img_2;
-int sigma_i;
-const int sigma_max = 10;
-
-int ssd_threshold;
-const int ssd_threshold_max = 100;
-
-int ncc_threshold;
-const int ncc_threshold_max = 100;
-
-int surf_hessian_threshold;
-const int surf_hessian_threshold_max = 1000;
-std::vector<cv::Vec2i> corners_1;
-std::vector<cv::Vec2i> corners_2;
-float sigma;
-
-std::string sub_dir;
 
 
 void EuclideanDistance::match_by_euclidean_distance(const std::vector<cv::KeyPoint>& keypoints_1, const cv::Mat& descriptor_1, 
@@ -253,7 +232,9 @@ void Ransac::ransac_for_homography(const double epsilon_percentage_of_outliers, 
 
 	if (max_img1_pts_vec3d.size() <= M) {
 		std::cout << "# of inliners not reached : needed = " << M << " actual = " << max_img1_pts_vec3d.size() << "\n";
+		max_inliner_matches.clear();
 	}
+
 	std::cout << "# of inliners : " << max_img1_pts_vec3d.size() << " M: " << M << "\n";
 
 }
@@ -824,7 +805,7 @@ int main(int argc, char** argv)  {
 	for (int i = 0; i < no_of_images; ++i) {
 		std::stringstream ss;
 		ss << dir;
-		ss << (i+2) << ".jpg";
+		ss << (i+1) << ".jpg";
 		cv::Mat img = cv::imread(ss.str());
 		imgs.push_back(img);
 	}
@@ -845,7 +826,7 @@ int main(int argc, char** argv)  {
 	double threshold = 10;
 	std::vector<std::vector<cv::DMatch>> matches_in_imgs(no_of_images - 1);
 	
-	double epsilon_percentage_of_outliers = 0.1;
+	double epsilon_percentage_of_outliers = 0.4;
 	cv::Mat output_img = imgs[0];
 	std::vector<cv::Mat> opt_homographies(no_of_images - 1);
 	for (int i = 0; i < no_of_images - 1; ++i) {
@@ -873,8 +854,51 @@ int main(int argc, char** argv)  {
 		opt_homographies[i] = H;
 		cv::Mat opt_H;
 		DogLeg::dogleg_for_non_linear_least_squares_optimization(H, img_1_inliers, img_2_inliers, opt_H);
-		//opt_homographies[i] = opt_H;
+		opt_homographies[i] = opt_H;
 	}
+
+
+	// prepare for bundle adjust
+	std::vector<std::vector<cv::KeyPoint>> key_points_1_all;
+	std::vector<std::vector<cv::KeyPoint>> key_points_2_all;
+	std::vector<std::vector<cv::DMatch>> matches_all;
+
+	epsilon_percentage_of_outliers = 0.2;
+
+	// every match has from 0->1, 0->2, 0->3, 0->4
+	// then from 1->2, 1->3, 1->4
+	// then from 2->3, 2->4
+	// then from 3->4
+	for (int k = 0; k < imgs.size(); ++k) {
+		for (int j = k+1; j < imgs.size(); ++j) {
+
+			std::cout << k << "->" << j << "\n";
+			std::vector<cv::DMatch> matches;
+			EuclideanDistance::match_by_euclidean_distance(key_points_in_imgs[k], descriptors[k], key_points_in_imgs[j], descriptors[j], threshold, matches);
+			//cv::Mat match_img;
+			//cv::drawMatches(imgs[i], key_points_in_imgs[i], imgs[i+1], key_points_in_imgs[i+1], matches_in_imgs[i], match_img);
+			//cv::imshow("match", match_img);
+			//cv::imwrite("correspondence_" + std::to_string(i+1) + ".jpg", match_img);
+
+			std::vector<cv::Vec3d> img_1_inliers;
+			std::vector<cv::Vec3d> img_2_inliers;
+			cv::Mat H;
+			std::vector<cv::KeyPoint> max_inliner_keypoins_1;
+			std::vector<cv::KeyPoint> max_inliner_keypoins_2;
+			std::vector<cv::DMatch> max_inliner_matches;
+			Ransac::ransac_for_homography(epsilon_percentage_of_outliers, matches.size(), key_points_in_imgs[k], 
+				key_points_in_imgs[j],  matches, H, img_1_inliers, img_2_inliers,
+				max_inliner_keypoins_1, max_inliner_keypoins_2, max_inliner_matches);
+
+			matches_all.push_back(max_inliner_matches);
+			key_points_1_all.push_back(max_inliner_keypoins_1);
+			key_points_2_all.push_back(max_inliner_keypoins_2);
+
+
+		}
+	}
+
+	fit_homographies(opt_homographies, key_points_1_all, key_points_2_all, matches_all);
 
 
 	cv::Mat transformed_img;

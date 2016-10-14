@@ -81,9 +81,19 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="dpmpar.c" />
+    <ClCompile Include="enorm.c" />
+    <ClCompile Include="fdjac2.c" />
+    <ClCompile Include="hfit.cpp" />
+    <ClCompile Include="lmdif.c" />
+    <ClCompile Include="lmpar.c" />
     <ClCompile Include="panorama.cpp" />
+    <ClCompile Include="qrfac.c" />
+    <ClCompile Include="qrsolv.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="f2c.h" />
+    <ClInclude Include="hfit.h" />
     <ClInclude Include="panorama.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

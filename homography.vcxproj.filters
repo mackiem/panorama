@@ -18,9 +18,39 @@
     <ClCompile Include="panorama.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="lmdif.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hfit.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="qrfac.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="lmpar.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fdjac2.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="enorm.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dpmpar.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="qrsolv.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="panorama.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="f2c.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="hfit.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
